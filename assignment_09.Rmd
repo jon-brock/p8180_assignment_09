@@ -1,0 +1,130 @@
+---
+title: 'P8180 - SQL Assignment #9'
+author: "Jon Brock"
+date: "2/20/2020"
+output: github_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(tibble.width = Inf)
+```
+
+```{r load packages, message = FALSE}
+library(tidyverse)
+library(sqldf)
+```
+
+```{r data import}
+demo <- read.csv("./NHANES_Demographics.csv") %>% janitor::clean_names()
+tri <- read.csv("./NHANES_Triglycerides.csv") %>% janitor::clean_names()
+```
+
+```{r df to tibble}
+demo_df <- as_tibble(demo)
+tri_df <- as_tibble(tri)
+```
+
+```{r data cleaning}
+demo_clean <- mutate(demo_df,
+                seqn = respondent_sequence_number,
+                age = age_in_years_at_screening,
+                race = as_factor(race_hispanic_origin_w_nh_asian),
+                pregnant = as_factor(pregnancy_status_at_exam),
+                household_income = annual_household_income,
+                family_income = annual_family_income,
+                gender = as_factor(gender)) %>% 
+            select(seqn, age, race, pregnant, household_income, family_income, gender)
+
+tri_clean <- mutate(tri_df,
+                seqn = respondent_sequence_number,
+                ldl_mmol = ldl_cholesterol_mmol_l,
+                ldl_mgdl = ldl_cholesterol_mg_d_l,
+                tri_mmol = triglyceride_mmol_l,
+                tri_mgdl = triglyceride_mg_d_l) %>% 
+            select(seqn, ldl_mmol, ldl_mgdl, tri_mmol, tri_mgdl)
+
+head(demo_clean)
+head(tri_clean)
+```
+
+1. Write a query that would allow you to fill out table 1 and assign the results to an object called table1.
+
+```{r problem #1}
+table1 <- sqldf(
+            "SELECT race, COUNT(race) AS freq, ROUND(AVG(age), 1) AS mean_age
+             FROM demo_clean
+             GROUP BY race")
+table1
+```
+
+2. Show the distribution of race by gender and display the race/gender combinations from highest to lowest frequency.  Note: when using SQL in R, you *can* refer to column aliases outside of the SELECT clause.
+
+```{r problem #2}
+table2 <- sqldf(
+            "SELECT gender, race, COUNT(race) AS race_counts
+             FROM demo_clean
+             GROUP BY gender, race
+             ORDER BY race_counts DESC")
+table2
+```
+
+3. Count the number of women who were pregnant at the time of screening. Use the column alias preg_at_screen.
+
+```{r problem #3}
+table3 <- sqldf(
+            "SELECT COUNT(pregnant) AS preg_at_screen
+             FROM demo_clean
+             GROUP BY gender
+             HAVING gender = 1")
+table3
+```
+
+4. How many men refused to provide annual household income?
+
+```{r problem #4}
+table4 <- sqldf(
+            "SELECT COUNT(gender) AS male_count
+             FROM demo_clean
+             GROUP BY household_income
+             HAVING household_income = 77")
+table4
+```
+
+5. What is the mean LDL level (mg/dL) for men and women? Use column alias mean_ldl and round results to 1 decimal place.
+
+```{r problem #5}
+table5 <- sqldf(
+            "SELECT gender, ROUND(AVG(ldl_mgdl), 1) AS mean_ldl
+             FROM demo_clean AS d
+             LEFT JOIN tri_clean AS t
+             ON d.seqn = t.seqn
+             GROUP BY gender")
+table5
+```
+
+6. Display the minimum and maximum triglyceride levels (mmol/L) for each race. Use column aliases min_tri and max_tri.
+
+```{r problem #6}
+table6 <- sqldf(
+            "SELECT race, MIN(tri_mmol) AS min_tri, MAX(tri_mmol) AS max_tri
+             FROM demo_clean AS d
+             LEFT JOIN tri_clean AS t
+             ON d.seqn = t.seqn
+             GROUP BY race
+             HAVING tri_mmol IS NOT NULL OR tri_mgdl IS NOT NULL")
+table6
+```
+
+7. Create a new data frame that can be used for future analyses that combines all demographic data and any matching triglyceride data. Call it demo_tri.
+
+```{r problem #7}
+demo_tri <- sqldf(
+        "SELECT d.*, t.tri_mmol, t.tri_mgdl
+         FROM demo_clean AS d
+         LEFT JOIN tri_clean AS t
+         ON d.seqn = t.seqn
+         WHERE tri_mmol IS NOT NULL OR tri_mgdl IS NOT NULL") %>% 
+    as_tibble()
+demo_tri
+```
